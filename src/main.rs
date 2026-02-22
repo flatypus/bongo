@@ -11,7 +11,35 @@ use tao::window::Window;
 use tao::window::WindowBuilder;
 use tiny_skia::FillRule;
 use tiny_skia::Transform;
-use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke};
+use tiny_skia::{Paint, Path, PathBuilder, Pixmap, Stroke};
+
+fn stroke_path(
+    pixmap: &mut Pixmap,
+    path: &Path,
+    transform: Transform,
+    stroke: &Stroke,
+    [sr, sg, sb, sa]: [u8; 4],
+) {
+    let mut stroke_paint = Paint::default();
+    stroke_paint.set_color_rgba8(sr, sg, sb, sa);
+    stroke_paint.anti_alias = true;
+    pixmap.stroke_path(path, &stroke_paint, &stroke, transform, None);
+}
+
+fn fill_and_stroke(
+    pixmap: &mut Pixmap,
+    path: &Path,
+    transform: Transform,
+    stroke: &Stroke,
+    [fr, fg, fb, fa]: [u8; 4],
+    [sr, sg, sb, sa]: [u8; 4],
+) {
+    let mut fill = Paint::default();
+    fill.set_color_rgba8(fr, fg, fb, fa);
+    fill.anti_alias = true;
+    pixmap.fill_path(path, &fill, FillRule::Winding, transform, None);
+    stroke_path(pixmap, path, transform, stroke, [sr, sg, sb, sa]);
+}
 
 fn lerp(start: f32, end: f32, pos: f32) -> f32 {
     return start * (1.0 - pos) + end * pos;
@@ -43,22 +71,28 @@ fn draw_bongo(
     mouse_x: f32, // float 0-1
     mouse_y: f32,
 ) {
-    let armx1 = -0.377;
-    let army1 = 0.626;
-    let armx2 = -2.424;
-    let army2 = 2.681;
-    let armx = -3.466;
-    let army = 1.856;
+    const START_X: f32 = 0.2;
+    const START_Y: f32 = -0.407;
+
+    let armx = -3.634;
+    let army = 2.338;
+
+    let arm_abs_x = START_X + armx;
+    let arm_abs_y = START_Y + army;
 
     // the farther left our mouse is, farther right bongocat's hand is
-    // too far right, the bezier handle looks wonky, ensure the handle is
-    // flat (0) when mouse is fatherst to left (0), scale to 0.8 when mouse
-    // is farthest to right (1)
-    let handle_rot_amt = 0.8 * mouse_x;
+    // too far right, the bezier handle looks wonky, we do some black magic idek anymore
+    let armx1 = -2.424 + 2.0 * mouse_x;
+    let army1 = 2.681 - 1.6 * mouse_x;
+    let armx2 = -1.09 - 1.0 * mouse_x;
+    let army2 = 1.732 + 2.0 * mouse_x;
+    let armx3 = -5.165 - 1.5 * mouse_x;
+    let army3 = 0.844 - 1.0 * mouse_x;
+
     let left_handle_dx = armx1 - armx;
-    let left_handle_dy = (army1 - army) * handle_rot_amt;
+    let left_handle_dy = army1 - army;
     let right_handle_dx = armx2 - armx;
-    let right_handle_dy = (army2 - army) * handle_rot_amt;
+    let right_handle_dy = army2 - army;
 
     let (x, y) = lerp_skew(
         (-1.665, 5.405),
@@ -69,24 +103,47 @@ fn draw_bongo(
         mouse_y,
     );
 
-    let body = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(0.0, 0.0);
+    // now we want to slightly offset the whole body/eyes/mouth etc depending on the mouse
+    let whole_dx = x - arm_abs_x;
+    let whole_dy = y - arm_abs_y;
+
+    const BODY_TF_SCALE: f32 = 0.04;
+
+    let body_dx = whole_dx * BODY_TF_SCALE;
+    let body_dy = whole_dy * BODY_TF_SCALE;
+
+    let body_base = |pb: &mut PathBuilder| {
+        pb.move_to(START_X - body_dx, START_Y - body_dy);
         pb.cubic_to(
-            x + left_handle_dx,
-            y + left_handle_dy,
-            x + right_handle_dx,
-            y + right_handle_dy,
-            x,
-            y,
+            x + left_handle_dx - body_dx,
+            y + left_handle_dy - body_dy,
+            x + right_handle_dx - body_dx,
+            y + right_handle_dy - body_dy,
+            x - body_dx,
+            y - body_dy,
         );
-        pb.cubic_to(-5.165, 0.844, -0.985, -5.213, 2.261, -5.721);
+        pb.cubic_to(armx3, army3, -0.985, -5.213, 2.261, -5.721);
         pb.cubic_to(2.732, -6.014, 3.229, -6.891, 3.514, -6.899);
         pb.cubic_to(3.763, -6.887, 3.9997, -6.035, 4.257, -5.603);
         pb.cubic_to(5.875, -5.403, 7.987, -4.278, 9.31, -3.289);
         pb.cubic_to(9.449, -3.2, 10.763, -4.026, 11.005, -3.912);
         pb.cubic_to(11.182, -3.802, 11.078, -2.014, 10.467, -0.976);
-        pb.cubic_to(10.996, -0.16, 11.772, 0.874, 11.89, 2.758);
+        pb.cubic_to(10.996, -0.16, 11.772, 0.874, 11.793, 2.282);
+    };
+
+    let body_fill = {
+        let mut pb = PathBuilder::new();
+        body_base(&mut pb);
+        // only need final line to complete the body, don't need for stroke
+        // otherwise funny clipping issues
+        pb.line_to(-1.974, -0.45);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let body_stroke = {
+        let mut pb = PathBuilder::new();
+        body_base(&mut pb);
         pb.finish().unwrap()
     };
 
@@ -126,37 +183,117 @@ fn draw_bongo(
         pb.finish().unwrap()
     };
 
-    let scale_x = width as f32 / 15.95;
-    let scale_y = height as f32 / 9.857;
+    let table = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(-9.766, -1.696);
+        pb.line_to(14.889, 2.846);
+        pb.line_to(14.889, 6.821);
+        pb.line_to(-9.766, 6.854);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let mousepad = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(-1.141, 5.256);
+        pb.cubic_to(-1.356, 5.470, -1.763, 5.471, -2.044, 5.357);
+        pb.line_to(-8.169, 2.876);
+        pb.cubic_to(-8.286, 2.829, -8.330, 2.595, -8.24, 2.506);
+        pb.line_to(-5.722, 0.024);
+        pb.cubic_to(-5.571, -0.125, -5.297, -0.103, -5.09, -0.06);
+        pb.line_to(2.032, 1.425);
+        pb.cubic_to(2.195, 1.459, 2.377, 1.754, 2.259, 1.872);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let mouse = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(-4.403, 2.977);
+        pb.cubic_to(-4.504, 2.931, -4.856, 2.379, -4.414, 1.363);
+        pb.cubic_to(-4.079, 0.878, -3.362, 0.161, -2.463, 0.477);
+        pb.cubic_to(-1.976, 0.671, -1.411, 1.452, -1.976, 2.319);
+        pb.cubic_to(-2.517, 3.077, -3.355, 3.721, -4.4, 2.975);
+        pb.line_to(-3.709, 2.056);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let table_line_left = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(-9.77, -1.696);
+        pb.line_to(2.992, 0.647);
+        pb.finish().unwrap()
+    };
+
+    let table_line_right = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(2.995, 0.643);
+        pb.line_to(14.892, 2.852);
+        pb.finish().unwrap()
+    };
+
+    const SVG_WIDTH: f32 = 24.86;
+    const SVG_HEIGHT: f32 = 13.95;
+    const SVG_ORIGIN_X: f32 = 9.87;
+    const SVG_ORIGIN_Y: f32 = 6.999;
+
+    let scale_x = width as f32 / SVG_WIDTH;
+    let scale_y = height as f32 / SVG_HEIGHT;
     let scale = scale_x.min(scale_y);
-    let offset_x = (width as f32 - 15.95 * scale) / 2.0;
-    let offset_y = (height as f32 - 9.857 * scale) / 2.0;
-    let transform = Transform::from_translate(3.95793, 6.999)
+    let offset_x = (width as f32 - SVG_WIDTH * scale) / 2.0;
+    let offset_y = (height as f32 - SVG_HEIGHT * scale) / 2.0;
+    let transform = Transform::from_translate(SVG_ORIGIN_X, SVG_ORIGIN_Y)
         .post_scale(scale, scale)
         .post_translate(offset_x, offset_y);
 
+    const EYE_TF_SCALE: f32 = 0.12;
+    const MOUTH_TF_SCALE: f32 = 0.105;
+
+    let eye_tf = transform.pre_translate(whole_dx * EYE_TF_SCALE, whole_dy * EYE_TF_SCALE);
+    let body_tf = transform.pre_translate(whole_dx * BODY_TF_SCALE, whole_dy * BODY_TF_SCALE);
+    let mouth_tf = transform.pre_translate(whole_dx * MOUTH_TF_SCALE, whole_dy * MOUTH_TF_SCALE);
+
+    let mouse_dx = whole_dx;
+    let mouse_dy = whole_dy;
+    let mouse_tf = transform.pre_translate(mouse_dx, mouse_dy);
+
     let mut pixmap = Pixmap::new(width, height).unwrap();
 
-    let mut fill_paint = Paint::default();
-    fill_paint.set_color_rgba8(255, 255, 255, 255);
-    fill_paint.anti_alias = true;
-    pixmap.fill_path(&body, &fill_paint, FillRule::Winding, transform, None);
+    let white = [255, 255, 255, 255];
+    let mousepad_grey_fill = [169, 168, 170, 255];
+    let mousepad_grey_stroke = [108, 108, 110, 255];
+    let black = [0, 0, 0, 255];
 
-    let mut stroke_paint = Paint::default();
-    stroke_paint.set_color_rgba8(0, 0, 0, 255);
-    stroke_paint.anti_alias = true;
     let stroke = Stroke {
-        width: 0.01 * scale,
+        width: 0.008 * scale,
         ..Stroke::default()
     };
-    pixmap.stroke_path(&body, &stroke_paint, &stroke, transform, None);
+
+    fill_and_stroke(&mut pixmap, &table, transform, &stroke, white, black);
+    fill_and_stroke(
+        &mut pixmap,
+        &mousepad,
+        transform,
+        &stroke,
+        mousepad_grey_fill,
+        mousepad_grey_stroke,
+    );
+    fill_and_stroke(&mut pixmap, &mouse, mouse_tf, &stroke, white, black);
+    stroke_path(&mut pixmap, &table_line_left, transform, &stroke, black);
+    let mut white_fill = Paint::default();
+    white_fill.set_color_rgba8(255, 255, 255, 255);
+    white_fill.anti_alias = true;
+    pixmap.fill_path(&body_fill, &white_fill, FillRule::Winding, body_tf, None);
+    stroke_path(&mut pixmap, &body_stroke, body_tf, &stroke, black);
+    stroke_path(&mut pixmap, &table_line_right, transform, &stroke, black);
 
     let mut black_fill = Paint::default();
     black_fill.set_color_rgba8(0, 0, 0, 255);
     black_fill.anti_alias = true;
-    pixmap.fill_path(&left_eye, &black_fill, FillRule::Winding, transform, None);
-    pixmap.fill_path(&right_eye, &black_fill, FillRule::Winding, transform, None);
-    pixmap.fill_path(&mouth, &black_fill, FillRule::Winding, transform, None);
+    pixmap.fill_path(&left_eye, &black_fill, FillRule::Winding, eye_tf, None);
+    pixmap.fill_path(&right_eye, &black_fill, FillRule::Winding, eye_tf, None);
+    pixmap.fill_path(&mouth, &black_fill, FillRule::Winding, mouth_tf, None);
 
     for (index, chunk) in pixmap.data().chunks_exact(4).enumerate() {
         let [r, g, b, a] = [
@@ -171,8 +308,8 @@ fn draw_bongo(
 
 fn main() {
     const OFFSET: i32 = 100;
-    const WIN_HEIGHT: i32 = 240;
-    const WIN_WIDTH: i32 = 360;
+    const WIN_HEIGHT: i32 = 480;
+    const WIN_WIDTH: i32 = 720;
     let event_loop = EventLoop::new();
     let monitor = event_loop.primary_monitor().unwrap();
     let scale_factor = monitor.scale_factor();
