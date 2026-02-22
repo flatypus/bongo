@@ -113,14 +113,14 @@ fn draw_bongo(
     let body_dy = whole_dy * BODY_TF_SCALE;
 
     let body_base = |pb: &mut PathBuilder| {
-        pb.move_to(START_X - body_dx, START_Y - body_dy);
+        pb.move_to(START_X, START_Y);
         pb.cubic_to(
-            x + left_handle_dx - body_dx,
-            y + left_handle_dy - body_dy,
-            x + right_handle_dx - body_dx,
-            y + right_handle_dy - body_dy,
-            x - body_dx,
-            y - body_dy,
+            x + left_handle_dx,
+            y + left_handle_dy,
+            x + right_handle_dx,
+            y + right_handle_dy,
+            x,
+            y,
         );
         pb.cubic_to(armx3, army3, -0.985, -5.213, 2.261, -5.721);
         pb.cubic_to(2.732, -6.014, 3.229, -6.891, 3.514, -6.899);
@@ -135,8 +135,9 @@ fn draw_bongo(
         let mut pb = PathBuilder::new();
         body_base(&mut pb);
         // only need final line to complete the body, don't need for stroke
+        // we subtract body_dx/body_dy so that this final line doesn't move with the body
         // otherwise funny clipping issues
-        pb.line_to(-1.974, -0.45);
+        pb.line_to(-1.974 - body_dx, -0.45 - body_dy);
         pb.close();
         pb.finish().unwrap()
     };
@@ -266,7 +267,7 @@ fn draw_bongo(
     let black = [0, 0, 0, 255];
 
     let stroke = Stroke {
-        width: 0.008 * scale,
+        width: 0.01 * scale,
         ..Stroke::default()
     };
 
@@ -308,8 +309,8 @@ fn draw_bongo(
 
 fn main() {
     const OFFSET: i32 = 100;
-    const WIN_HEIGHT: i32 = 480;
-    const WIN_WIDTH: i32 = 720;
+    const WIN_HEIGHT: i32 = 240;
+    const WIN_WIDTH: i32 = 360;
     let event_loop = EventLoop::new();
     let monitor = event_loop.primary_monitor().unwrap();
     let scale_factor = monitor.scale_factor();
