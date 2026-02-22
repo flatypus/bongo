@@ -1,0 +1,14 @@
+[package]
+name = "bongo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mouse_position = "0.1.4"
+softbuffer = "0.4.8"
+tao = "0.34.5"
+tiny-skia = "0.12.0"
+
+
+[patch.crates-io]
+softbuffer = { git = "https://github.com/flatypus/softbuffer.git", branch = "hinson/alpha-hack" }
