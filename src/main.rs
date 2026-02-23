@@ -415,7 +415,32 @@ fn main() {
     let mut hovering_opacity: f32 = 1.0;
     let mut focused = false;
 
-    let device_state = DeviceState::new();
+    let device_state = match DeviceState::checked_new() {
+        Some(ds) => ds,
+        None => {
+            eprintln!(
+                "Hi! Thanks for trying bongo. One of the features we need (detecting if you're typing) needs permissions from you. Mouse tracking will still work!"
+            );
+            eprintln!();
+            eprintln!("To enable keyboard support:");
+            eprintln!("     System Settings -> Privacy & Security -> Accessibility");
+            eprintln!("     Click '+' and add the bongo binary to the list.");
+            eprintln!();
+            eprintln!("Press Enter to continue (we'll open the page for you!)");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).ok();
+            if input.trim().is_empty() {
+                #[cfg(target_os = "macos")]
+                {
+                    std::process::Command::new("open")
+                        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                        .spawn()
+                        .ok();
+                }
+            }
+            DeviceState {}
+        }
+    };
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(16));
