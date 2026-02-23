@@ -1,29 +1,75 @@
-use mouse_position::mouse_position::Mouse;
+#![windows_subsystem = "windows"]
+
+use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
 use softbuffer::Buffer;
+use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 use tao::dpi::PhysicalPosition;
 use tao::dpi::PhysicalSize;
-use tao::event::Event;
+use tao::event::{Event, WindowEvent};
 use tao::event_loop::ControlFlow;
 use tao::event_loop::EventLoop;
-use tao::platform::macos::WindowBuilderExtMacOS;
 use tao::window::Window;
 use tao::window::WindowBuilder;
 use tiny_skia::FillRule;
 use tiny_skia::Transform;
 use tiny_skia::{Paint, Path, PathBuilder, Pixmap, Stroke};
 
+use colors::*;
+
+#[cfg(target_os = "macos")]
+use tao::platform::macos::WindowBuilderExtMacOS;
+
+#[cfg(target_os = "windows")]
+use tao::platform::windows::WindowBuilderExtWindows;
+
+mod colors {
+    pub const WHITE: [u8; 4] = [255, 255, 255, 255];
+    pub const BLACK: [u8; 4] = [0, 0, 0, 255];
+    pub const BLUE: [u8; 4] = [56, 143, 255, 150];
+    pub const PINK: [u8; 4] = [255, 138, 202, 255];
+    pub const PINK_STROKE: [u8; 4] = [223, 65, 143, 255];
+    pub const MOUSEPAD_FILL: [u8; 4] = [169, 168, 170, 255];
+    pub const MOUSEPAD_STROKE: [u8; 4] = [108, 108, 110, 255];
+}
+
+struct ClickStates {
+    left_click: bool,
+    right_click: bool,
+    other_click: bool,
+    middle_click: bool,
+}
+
+impl ClickStates {
+    fn new() -> Self {
+        Self {
+            left_click: false,
+            right_click: false,
+            other_click: false,
+            middle_click: false,
+        }
+    }
+}
+
+fn paint([r, g, b, a]: [u8; 4]) -> Paint<'static> {
+    let mut p = Paint::default();
+    p.set_color_rgba8(r, g, b, a);
+    p.anti_alias = true;
+    p
+}
+
+fn fill_path(pixmap: &mut Pixmap, path: &Path, transform: Transform, color: [u8; 4]) {
+    pixmap.fill_path(path, &paint(color), FillRule::Winding, transform, None);
+}
+
 fn stroke_path(
     pixmap: &mut Pixmap,
     path: &Path,
     transform: Transform,
     stroke: &Stroke,
-    [sr, sg, sb, sa]: [u8; 4],
+    color: [u8; 4],
 ) {
-    let mut stroke_paint = Paint::default();
-    stroke_paint.set_color_rgba8(sr, sg, sb, sa);
-    stroke_paint.anti_alias = true;
-    pixmap.stroke_path(path, &stroke_paint, &stroke, transform, None);
+    pixmap.stroke_path(path, &paint(color), stroke, transform, None);
 }
 
 fn fill_and_stroke(
@@ -31,14 +77,11 @@ fn fill_and_stroke(
     path: &Path,
     transform: Transform,
     stroke: &Stroke,
-    [fr, fg, fb, fa]: [u8; 4],
-    [sr, sg, sb, sa]: [u8; 4],
+    fill_color: [u8; 4],
+    stroke_color: [u8; 4],
 ) {
-    let mut fill = Paint::default();
-    fill.set_color_rgba8(fr, fg, fb, fa);
-    fill.anti_alias = true;
-    pixmap.fill_path(path, &fill, FillRule::Winding, transform, None);
-    stroke_path(pixmap, path, transform, stroke, [sr, sg, sb, sa]);
+    fill_path(pixmap, path, transform, fill_color);
+    stroke_path(pixmap, path, transform, stroke, stroke_color);
 }
 
 fn lerp(start: f32, end: f32, pos: f32) -> f32 {
@@ -70,6 +113,8 @@ fn draw_bongo(
     height: u32,
     mouse_x: f32, // float 0-1
     mouse_y: f32,
+    opacity: f32,
+    click_states: &ClickStates,
 ) {
     const START_X: f32 = 0.2;
     const START_Y: f32 = -0.407;
@@ -220,6 +265,88 @@ fn draw_bongo(
         pb.finish().unwrap()
     };
 
+    let mouse_wheel = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(-4.107, 2.429);
+        pb.cubic_to(-4.07, 2.375, -3.996, 2.346, -3.95, 2.376);
+        pb.cubic_to(-3.91, 2.403, -3.907, 2.481, -3.95, 2.542);
+        pb.cubic_to(-4.017, 2.633, -4.077, 2.648, -4.129, 2.61);
+        pb.cubic_to(-4.174, 2.578, -4.167, 2.498, -4.107, 2.429);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let mouse_button_left = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(-4.399, 2.976);
+        pb.line_to(-3.537, 1.828);
+        pb.line_to(-2.182, 2.577);
+        pb.cubic_to(-2.577, 3.037, -3.354, 3.721, -4.401, 2.976);
+        pb.finish().unwrap()
+    };
+
+    let mouse_button_right = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(-4.402, 2.975);
+        pb.line_to(-3.539, 1.82);
+        pb.line_to(-4.361, 1.304);
+        pb.cubic_to(-4.574, 1.586, -4.821, 2.562, -4.406, 2.978);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let left_hand = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(7.063, 1.35);
+        pb.cubic_to(6.898, 0.293, 6.467, -2.05, 7.581, -2.295);
+        pb.cubic_to(8.715, -2.57, 9.464, -1.238, 9.717, -0.015);
+        pb.finish().unwrap()
+    };
+
+    let paw_1 = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(7.848, -1.372);
+        pb.cubic_to(7.983, -1.405, 8.068, -1.284, 8.097, -1.163);
+        pb.cubic_to(8.116, -1.09, 8.138, -0.897, 7.981, -0.845);
+        pb.cubic_to(7.837, -0.816, 7.755, -0.974, 7.725, -1.073);
+        pb.cubic_to(7.696, -1.168, 7.713, -1.332, 7.848, -1.372);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let paw_2 = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(7.459, -0.694);
+        pb.cubic_to(7.652, -0.725, 7.697, -0.489, 7.706, -0.434);
+        pb.cubic_to(7.722, -0.338, 7.706, -0.112, 7.506, -0.096);
+        pb.cubic_to(7.363, -0.081, 7.283, -0.23, 7.267, -0.364);
+        pb.cubic_to(7.245, -0.498, 7.303, -0.677, 7.458, -0.693);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let paw_3 = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(8.506, -0.792);
+        pb.cubic_to(8.658, -0.819, 8.78, -0.692, 8.802, -0.518);
+        pb.cubic_to(8.824, -0.344, 8.734, -0.204, 8.613, -0.186);
+        pb.cubic_to(8.492, -0.168, 8.4, -0.262, 8.356, -0.438);
+        pb.cubic_to(8.312, -0.614, 8.388, -0.767, 8.503, -0.792);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
+    let paw_4 = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(8.093, -0.164);
+        pb.cubic_to(8.319, -0.204, 8.52, 0.06, 8.571, 0.271);
+        pb.cubic_to(8.622, 0.482, 8.634, 0.944, 8.327, 0.975);
+        pb.cubic_to(8.02, 1.006, 7.877, 0.642, 7.834, 0.451);
+        pb.cubic_to(7.791, 0.26, 7.836, -0.1, 8.085, -0.161);
+        pb.close();
+        pb.finish().unwrap()
+    };
+
     let table_line_left = {
         let mut pb = PathBuilder::new();
         pb.move_to(-9.77, -1.696);
@@ -261,56 +388,74 @@ fn draw_bongo(
 
     let mut pixmap = Pixmap::new(width, height).unwrap();
 
-    let white = [255, 255, 255, 255];
-    let mousepad_grey_fill = [169, 168, 170, 255];
-    let mousepad_grey_stroke = [108, 108, 110, 255];
-    let black = [0, 0, 0, 255];
-
     let stroke = Stroke {
         width: 0.01 * scale,
         ..Stroke::default()
     };
 
-    fill_and_stroke(&mut pixmap, &table, transform, &stroke, white, black);
+    fill_and_stroke(&mut pixmap, &table, transform, &stroke, WHITE, BLACK);
     fill_and_stroke(
         &mut pixmap,
         &mousepad,
         transform,
         &stroke,
-        mousepad_grey_fill,
-        mousepad_grey_stroke,
+        MOUSEPAD_FILL,
+        MOUSEPAD_STROKE,
     );
-    fill_and_stroke(&mut pixmap, &mouse, mouse_tf, &stroke, white, black);
-    stroke_path(&mut pixmap, &table_line_left, transform, &stroke, black);
-    let mut white_fill = Paint::default();
-    white_fill.set_color_rgba8(255, 255, 255, 255);
-    white_fill.anti_alias = true;
-    pixmap.fill_path(&body_fill, &white_fill, FillRule::Winding, body_tf, None);
-    stroke_path(&mut pixmap, &body_stroke, body_tf, &stroke, black);
-    stroke_path(&mut pixmap, &table_line_right, transform, &stroke, black);
+    fill_and_stroke(&mut pixmap, &mouse, mouse_tf, &stroke, WHITE, BLACK);
+    let wheel_fill = if click_states.middle_click {
+        BLUE
+    } else {
+        MOUSEPAD_FILL
+    };
+    fill_and_stroke(
+        &mut pixmap,
+        &mouse_wheel,
+        mouse_tf,
+        &stroke,
+        wheel_fill,
+        BLACK,
+    );
+    stroke_path(&mut pixmap, &table_line_left, transform, &stroke, BLACK);
+    fill_path(&mut pixmap, &body_fill, body_tf, WHITE);
+    stroke_path(&mut pixmap, &body_stroke, body_tf, &stroke, BLACK);
+    stroke_path(&mut pixmap, &table_line_right, transform, &stroke, BLACK);
 
-    let mut black_fill = Paint::default();
-    black_fill.set_color_rgba8(0, 0, 0, 255);
-    black_fill.anti_alias = true;
-    pixmap.fill_path(&left_eye, &black_fill, FillRule::Winding, eye_tf, None);
-    pixmap.fill_path(&right_eye, &black_fill, FillRule::Winding, eye_tf, None);
-    pixmap.fill_path(&mouth, &black_fill, FillRule::Winding, mouth_tf, None);
+    stroke_path(&mut pixmap, &left_hand, body_tf, &stroke, BLACK);
+    fill_and_stroke(&mut pixmap, &paw_1, body_tf, &stroke, PINK, PINK_STROKE);
+    fill_and_stroke(&mut pixmap, &paw_2, body_tf, &stroke, PINK, PINK_STROKE);
+    fill_and_stroke(&mut pixmap, &paw_3, body_tf, &stroke, PINK, PINK_STROKE);
+    fill_and_stroke(&mut pixmap, &paw_4, body_tf, &stroke, PINK, PINK_STROKE);
+
+    fill_path(&mut pixmap, &left_eye, eye_tf, BLACK);
+    fill_path(&mut pixmap, &right_eye, eye_tf, BLACK);
+    fill_path(&mut pixmap, &mouth, mouth_tf, BLACK);
+
+    if click_states.left_click {
+        fill_path(&mut pixmap, &mouse_button_left, mouse_tf, BLUE);
+    }
+    if click_states.right_click {
+        fill_path(&mut pixmap, &mouse_button_right, mouse_tf, BLUE);
+    }
 
     for (index, chunk) in pixmap.data().chunks_exact(4).enumerate() {
         let [r, g, b, a] = [
-            chunk[0] as u32,
-            chunk[1] as u32,
-            chunk[2] as u32,
-            chunk[3] as u32,
+            ((chunk[0] as f32) * opacity) as u32,
+            ((chunk[1] as f32) * opacity) as u32,
+            ((chunk[2] as f32) * opacity) as u32,
+            ((chunk[3] as f32) * opacity) as u32,
         ];
         (*buffer)[index] = b | (g << 8) | (r << 16) | (a << 24);
     }
 }
 
 fn main() {
-    const OFFSET: i32 = 100;
+    const OFFSET: i32 = 50;
     const WIN_HEIGHT: i32 = 240;
     const WIN_WIDTH: i32 = 360;
+    const MIN_OPACITY: f32 = 0.4;
+    const OPACITY_ANIM_SPEED: f32 = 0.08;
+
     let event_loop = EventLoop::new();
     let monitor = event_loop.primary_monitor().unwrap();
     let scale_factor = monitor.scale_factor();
@@ -325,12 +470,21 @@ fn main() {
         .with_position(PhysicalPosition::new(pos_x, pos_y))
         .with_inner_size(PhysicalSize::new(WIN_WIDTH, WIN_HEIGHT))
         .with_closable(false)
-        .with_always_on_top(true)
+        .with_decorations(false)
+        .with_always_on_top(true);
+
+    #[cfg(target_os = "macos")]
+    let window = window
         .with_has_shadow(false)
         .with_visible_on_all_workspaces(true)
-        .with_titlebar_hidden(true)
-        .build(&event_loop)
-        .unwrap();
+        .with_titlebar_hidden(true);
+
+    #[cfg(target_os = "windows")]
+    let window = window
+        .with_undecorated_shadow(false)
+        .with_skip_taskbar(true);
+
+    let window = window.build(&event_loop).unwrap();
 
     let window: Box<Window> = Box::new(window);
     let window: &'static Window = Box::leak(window);
@@ -340,22 +494,98 @@ fn main() {
     let mut mouse_x: i32 = 0;
     let mut mouse_y: i32 = 0;
 
+    let mut click_states = ClickStates::new();
+
+    let mut hovering_over = false;
+    let mut hovering_opacity: f32 = 1.0;
+    let mut focused = false;
+
+    let device_state = DeviceState::new();
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(16));
+
         match event {
             Event::NewEvents(_) => {
-                if let Mouse::Position { x, y } = Mouse::get_mouse_position() {
-                    if x != mouse_x as i32 || y != mouse_y as i32 {
-                        mouse_x = x;
-                        mouse_y = y;
-                        window.request_redraw();
-                    }
+                let keys = device_state.get_keys();
+                if focused && keys.contains(&Keycode::Q) {
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                }
+
+                let mouse = device_state.get_mouse();
+                let new_x = (mouse.coords.0 as f64 * scale_factor) as i32;
+                let new_y = (mouse.coords.1 as f64 * scale_factor) as i32;
+                if new_x != mouse_x || new_y != mouse_y {
+                    mouse_x = new_x;
+                    mouse_y = new_y;
+                    window.request_redraw();
+                }
+
+                let left_click = mouse.button_pressed.get(1).copied().unwrap_or(false);
+                let right_click = mouse.button_pressed.get(2).copied().unwrap_or(false);
+                let middle_click = mouse.button_pressed.get(3).copied().unwrap_or(false);
+
+                if click_states.left_click != left_click {
+                    click_states.left_click = left_click;
+                    window.request_redraw();
+                }
+
+                if click_states.right_click != right_click {
+                    click_states.right_click = right_click;
+                    window.request_redraw();
+                }
+
+                if click_states.middle_click != middle_click {
+                    click_states.middle_click = middle_click;
+                    window.request_redraw();
+                }
+
+                let other_click = !keys.is_empty();
+                if click_states.other_click != other_click {
+                    click_states.other_click = other_click;
+                    window.request_redraw();
+                }
+
+                let new_hovering_opacity = if hovering_over {
+                    (hovering_opacity - OPACITY_ANIM_SPEED).max(MIN_OPACITY)
+                } else {
+                    (hovering_opacity + OPACITY_ANIM_SPEED).min(1.0)
+                };
+
+                if new_hovering_opacity != hovering_opacity {
+                    window.request_redraw();
+                    hovering_opacity = new_hovering_opacity;
+                }
+
+                let new_hovering = mouse_x >= pos_x
+                    && mouse_x < pos_x + WIN_WIDTH
+                    && mouse_y >= pos_y
+                    && mouse_y < pos_y + WIN_HEIGHT;
+
+                if hovering_over != new_hovering {
+                    window.request_redraw();
+                    hovering_over = new_hovering;
                 }
             }
+
+            Event::WindowEvent {
+                event: WindowEvent::Focused(f),
+                ..
+            } => {
+                focused = f;
+            }
+
             Event::RedrawRequested(_) => {
+                surface
+                    .resize(
+                        NonZeroU32::new(WIN_WIDTH as u32).unwrap(),
+                        NonZeroU32::new(WIN_HEIGHT as u32).unwrap(),
+                    )
+                    .unwrap();
                 let mut buffer = surface.buffer_mut().unwrap();
-                let scaled_mouse_x = (mouse_x as f32) / (mon_width as f32) * (scale_factor as f32);
-                let scaled_mouse_y = (mouse_y as f32) / (mon_height as f32) * (scale_factor as f32);
+                let scaled_mouse_x = (mouse_x as f32) / (mon_width as f32);
+                let scaled_mouse_y = (mouse_y as f32) / (mon_height as f32);
 
                 draw_bongo(
                     &mut buffer,
@@ -363,6 +593,8 @@ fn main() {
                     WIN_HEIGHT as u32,
                     scaled_mouse_x,
                     scaled_mouse_y,
+                    hovering_opacity,
+                    &click_states,
                 );
 
                 buffer.present().unwrap();
