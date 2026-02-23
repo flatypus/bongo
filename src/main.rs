@@ -378,8 +378,8 @@ fn main() {
         width: mon_width,
         height: mon_height,
     } = monitor.size();
-    let pos_x = (mon_width as i32) - (WIN_WIDTH + OFFSET);
-    let pos_y = (mon_height as i32) - (WIN_HEIGHT + OFFSET);
+    let mut pos_x = (mon_width as i32) - (WIN_WIDTH + OFFSET);
+    let mut pos_y = (mon_height as i32) - (WIN_HEIGHT + OFFSET);
     let window = WindowBuilder::new()
         .with_transparent(true)
         .with_position(PhysicalPosition::new(pos_x, pos_y))
@@ -462,31 +462,6 @@ fn main() {
                     window.request_redraw();
                 }
 
-                let left_click = mouse.button_pressed.get(1).copied().unwrap_or(false);
-                let right_click = mouse.button_pressed.get(2).copied().unwrap_or(false);
-                let middle_click = mouse.button_pressed.get(3).copied().unwrap_or(false);
-
-                if click_states.left_click != left_click {
-                    click_states.left_click = left_click;
-                    window.request_redraw();
-                }
-
-                if click_states.right_click != right_click {
-                    click_states.right_click = right_click;
-                    window.request_redraw();
-                }
-
-                if click_states.middle_click != middle_click {
-                    click_states.middle_click = middle_click;
-                    window.request_redraw();
-                }
-
-                let other_click = !keys.is_empty();
-                if click_states.other_click != other_click {
-                    click_states.other_click = other_click;
-                    window.request_redraw();
-                }
-
                 let new_hovering_opacity = if hovering_over {
                     (hovering_opacity - OPACITY_ANIM_SPEED).max(MIN_OPACITY)
                 } else {
@@ -507,6 +482,31 @@ fn main() {
                     window.request_redraw();
                     hovering_over = new_hovering;
                 }
+
+                let left_click = mouse.button_pressed.get(1).copied().unwrap_or(false);
+                let right_click = mouse.button_pressed.get(2).copied().unwrap_or(false);
+                let middle_click = mouse.button_pressed.get(3).copied().unwrap_or(false);
+                let other_click = !keys.is_empty(); // any keypress will bingo bongo
+
+                if click_states.left_click != left_click {
+                    click_states.left_click = left_click;
+                    window.request_redraw();
+                }
+
+                if click_states.right_click != right_click {
+                    click_states.right_click = right_click;
+                    window.request_redraw();
+                }
+
+                if click_states.middle_click != middle_click {
+                    click_states.middle_click = middle_click;
+                    window.request_redraw();
+                }
+
+                if click_states.other_click != other_click {
+                    click_states.other_click = other_click;
+                    window.request_redraw();
+                }
             }
 
             Event::WindowEvent {
@@ -514,6 +514,26 @@ fn main() {
                 ..
             } => {
                 focused = f;
+            }
+
+            Event::WindowEvent {
+                event:
+                    WindowEvent::MouseInput {
+                        state: tao::event::ElementState::Pressed,
+                        button: tao::event::MouseButton::Left,
+                        ..
+                    },
+                ..
+            } => {
+                let _ = window.drag_window();
+            }
+
+            Event::WindowEvent {
+                event: WindowEvent::Moved(position),
+                ..
+            } => {
+                pos_x = position.x;
+                pos_y = position.y;
             }
 
             Event::RedrawRequested(_) => {
