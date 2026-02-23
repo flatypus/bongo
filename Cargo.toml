@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 device_query = "4.0.1"
+rand = "0.9"
 softbuffer = "0.4.8"
 tao = "0.34.5"
 tiny-skia = "0.12.0"

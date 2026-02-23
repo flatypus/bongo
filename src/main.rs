@@ -1,6 +1,8 @@
 #![windows_subsystem = "windows"]
 
-use device_query::{DeviceQuery, DeviceState, Keycode, MouseState};
+use colors::*;
+use device_query::{DeviceQuery, DeviceState, Keycode};
+use rand::Rng;
 use softbuffer::Buffer;
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
@@ -14,8 +16,7 @@ use tao::window::WindowBuilder;
 use tiny_skia::FillRule;
 use tiny_skia::Transform;
 use tiny_skia::{Paint, Path, PathBuilder, Pixmap, Stroke};
-
-use colors::*;
+mod paths;
 
 #[cfg(target_os = "macos")]
 use tao::platform::macos::WindowBuilderExtMacOS;
@@ -27,6 +28,7 @@ mod colors {
     pub const WHITE: [u8; 4] = [255, 255, 255, 255];
     pub const BLACK: [u8; 4] = [0, 0, 0, 255];
     pub const BLUE: [u8; 4] = [56, 143, 255, 150];
+    pub const DARK_BLUE: [u8; 4] = [56, 143, 255, 255];
     pub const PINK: [u8; 4] = [255, 138, 202, 255];
     pub const PINK_STROKE: [u8; 4] = [223, 65, 143, 255];
     pub const MOUSEPAD_FILL: [u8; 4] = [169, 168, 170, 255];
@@ -193,173 +195,35 @@ fn draw_bongo(
         pb.finish().unwrap()
     };
 
-    let left_eye = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(1.247, -2.605);
-        pb.cubic_to(1.25, -2.63, 1.273, -2.981, 1.551, -2.979);
-        pb.cubic_to(1.791, -2.976, 1.836, -2.693, 1.831, -2.589);
-        pb.cubic_to(1.836, -2.359, 1.662, -2.239, 1.54, -2.239);
-        pb.cubic_to(1.436, -2.237, 1.246, -2.336, 1.247, -2.604);
-        pb.finish().unwrap()
-    };
-
-    let right_eye = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(5.811, -1.094);
-        pb.cubic_to(5.813, -1.276, 5.934, -1.531, 6.133, -1.529);
-        pb.cubic_to(6.356, -1.53, 6.455, -1.276, 6.456, -1.081);
-        pb.cubic_to(6.465, -0.877, 6.314, -0.687, 6.142, -0.693);
-        pb.cubic_to(5.978, -0.688, 5.807, -0.849, 5.813, -1.094);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let mouth = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(2.529, -2.441);
-        pb.cubic_to(2.521, -2.191, 2.897, -1.8, 3.331, -2.133);
-        pb.cubic_to(3.544, -1.458, 4.132, -1.757, 4.281, -2.005);
-        pb.cubic_to(4.313, -2.046, 4.308, -2.08, 4.291, -2.095);
-        pb.cubic_to(4.196, -2.163, 4.085, -1.867, 3.709, -1.884);
-        pb.cubic_to(3.438, -1.889, 3.431, -2.18, 3.418, -2.217);
-        pb.cubic_to(3.406, -2.273, 3.363, -2.284, 3.32, -2.258);
-        pb.cubic_to(3.287, -2.245, 3.191, -2.091, 2.919, -2.165);
-        pb.cubic_to(2.715, -2.26, 2.681, -2.417, 2.659, -2.483);
-        pb.cubic_to(2.63, -2.602, 2.527, -2.584, 2.529, -2.44);
-        pb.finish().unwrap()
-    };
-
-    let table = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(-9.766, -1.696);
-        pb.line_to(14.889, 2.846);
-        pb.line_to(14.889, 6.821);
-        pb.line_to(-9.766, 6.854);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let mousepad = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(-1.141, 5.256);
-        pb.cubic_to(-1.356, 5.470, -1.763, 5.471, -2.044, 5.357);
-        pb.line_to(-8.169, 2.876);
-        pb.cubic_to(-8.286, 2.829, -8.330, 2.595, -8.24, 2.506);
-        pb.line_to(-5.722, 0.024);
-        pb.cubic_to(-5.571, -0.125, -5.297, -0.103, -5.09, -0.06);
-        pb.line_to(2.032, 1.425);
-        pb.cubic_to(2.195, 1.459, 2.377, 1.754, 2.259, 1.872);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let mouse = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(-4.403, 2.977);
-        pb.cubic_to(-4.504, 2.931, -4.856, 2.379, -4.414, 1.363);
-        pb.cubic_to(-4.079, 0.878, -3.362, 0.161, -2.463, 0.477);
-        pb.cubic_to(-1.976, 0.671, -1.411, 1.452, -1.976, 2.319);
-        pb.cubic_to(-2.517, 3.077, -3.355, 3.721, -4.4, 2.975);
-        pb.line_to(-3.709, 2.056);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let mouse_wheel = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(-4.107, 2.429);
-        pb.cubic_to(-4.07, 2.375, -3.996, 2.346, -3.95, 2.376);
-        pb.cubic_to(-3.91, 2.403, -3.907, 2.481, -3.95, 2.542);
-        pb.cubic_to(-4.017, 2.633, -4.077, 2.648, -4.129, 2.61);
-        pb.cubic_to(-4.174, 2.578, -4.167, 2.498, -4.107, 2.429);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let mouse_button_left = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(-4.399, 2.976);
-        pb.line_to(-3.537, 1.828);
-        pb.line_to(-2.182, 2.577);
-        pb.cubic_to(-2.577, 3.037, -3.354, 3.721, -4.401, 2.976);
-        pb.finish().unwrap()
-    };
-
-    let mouse_button_right = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(-4.402, 2.975);
-        pb.line_to(-3.539, 1.82);
-        pb.line_to(-4.361, 1.304);
-        pb.cubic_to(-4.574, 1.586, -4.821, 2.562, -4.406, 2.978);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let left_hand = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(7.063, 1.35);
-        pb.cubic_to(6.898, 0.293, 6.467, -2.05, 7.581, -2.295);
-        pb.cubic_to(8.715, -2.57, 9.464, -1.238, 9.717, -0.015);
-        pb.finish().unwrap()
-    };
-
-    let paw_1 = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(7.848, -1.372);
-        pb.cubic_to(7.983, -1.405, 8.068, -1.284, 8.097, -1.163);
-        pb.cubic_to(8.116, -1.09, 8.138, -0.897, 7.981, -0.845);
-        pb.cubic_to(7.837, -0.816, 7.755, -0.974, 7.725, -1.073);
-        pb.cubic_to(7.696, -1.168, 7.713, -1.332, 7.848, -1.372);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let paw_2 = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(7.459, -0.694);
-        pb.cubic_to(7.652, -0.725, 7.697, -0.489, 7.706, -0.434);
-        pb.cubic_to(7.722, -0.338, 7.706, -0.112, 7.506, -0.096);
-        pb.cubic_to(7.363, -0.081, 7.283, -0.23, 7.267, -0.364);
-        pb.cubic_to(7.245, -0.498, 7.303, -0.677, 7.458, -0.693);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let paw_3 = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(8.506, -0.792);
-        pb.cubic_to(8.658, -0.819, 8.78, -0.692, 8.802, -0.518);
-        pb.cubic_to(8.824, -0.344, 8.734, -0.204, 8.613, -0.186);
-        pb.cubic_to(8.492, -0.168, 8.4, -0.262, 8.356, -0.438);
-        pb.cubic_to(8.312, -0.614, 8.388, -0.767, 8.503, -0.792);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let paw_4 = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(8.093, -0.164);
-        pb.cubic_to(8.319, -0.204, 8.52, 0.06, 8.571, 0.271);
-        pb.cubic_to(8.622, 0.482, 8.634, 0.944, 8.327, 0.975);
-        pb.cubic_to(8.02, 1.006, 7.877, 0.642, 7.834, 0.451);
-        pb.cubic_to(7.791, 0.26, 7.836, -0.1, 8.085, -0.161);
-        pb.close();
-        pb.finish().unwrap()
-    };
-
-    let table_line_left = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(-9.77, -1.696);
-        pb.line_to(2.992, 0.647);
-        pb.finish().unwrap()
-    };
-
-    let table_line_right = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(2.995, 0.643);
-        pb.line_to(14.892, 2.852);
-        pb.finish().unwrap()
-    };
+    let eyes = paths::eyes();
+    let mouth = paths::mouth();
+    let table = paths::table();
+    let mousepad = paths::mousepad();
+    let mouse = paths::mouse();
+    let mouse_wheel = paths::mouse_wheel();
+    let mouse_button_left = paths::mouse_button_left();
+    let mouse_button_right = paths::mouse_button_right();
+    let left_hand = paths::left_hand();
+    let paws = paths::paws();
+    let table_line_left = paths::table_line_left();
+    let table_line_right = paths::table_line_right();
+    let keys = [
+        paths::key_space(),
+        paths::key_d(),
+        paths::key_s(),
+        paths::key_a(),
+        paths::key_r(),
+        paths::key_e(),
+        paths::key_w(),
+        paths::key_q(),
+        paths::key_7(),
+        paths::key_6(),
+        paths::key_5(),
+        paths::key_4(),
+        paths::key_3(),
+        paths::key_2(),
+        paths::key_1(),
+    ];
 
     const SVG_WIDTH: f32 = 24.86;
     const SVG_HEIGHT: f32 = 13.95;
@@ -378,6 +242,7 @@ fn draw_bongo(
     const EYE_TF_SCALE: f32 = 0.12;
     const MOUTH_TF_SCALE: f32 = 0.105;
 
+    // little body jiggle
     let eye_tf = transform.pre_translate(whole_dx * EYE_TF_SCALE, whole_dy * EYE_TF_SCALE);
     let body_tf = transform.pre_translate(whole_dx * BODY_TF_SCALE, whole_dy * BODY_TF_SCALE);
     let mouth_tf = transform.pre_translate(whole_dx * MOUTH_TF_SCALE, whole_dy * MOUTH_TF_SCALE);
@@ -421,14 +286,64 @@ fn draw_bongo(
     stroke_path(&mut pixmap, &body_stroke, body_tf, &stroke, BLACK);
     stroke_path(&mut pixmap, &table_line_right, transform, &stroke, BLACK);
 
-    stroke_path(&mut pixmap, &left_hand, body_tf, &stroke, BLACK);
-    fill_and_stroke(&mut pixmap, &paw_1, body_tf, &stroke, PINK, PINK_STROKE);
-    fill_and_stroke(&mut pixmap, &paw_2, body_tf, &stroke, PINK, PINK_STROKE);
-    fill_and_stroke(&mut pixmap, &paw_3, body_tf, &stroke, PINK, PINK_STROKE);
-    fill_and_stroke(&mut pixmap, &paw_4, body_tf, &stroke, PINK, PINK_STROKE);
+    let key_centers: Vec<(f32, f32)> = keys
+        .iter()
+        .map(|k| {
+            let b = k.bounds();
+            ((b.left() + b.right()) / 2.0, (b.top() + b.bottom()) / 2.0)
+        })
+        .collect();
 
-    fill_path(&mut pixmap, &left_eye, eye_tf, BLACK);
-    fill_path(&mut pixmap, &right_eye, eye_tf, BLACK);
+    if click_states.other_click {
+        // we randomize because we do NOT want this to be a key logger lmao
+        let idx = rand::rng().random_range(0..keys.len());
+        let (center_x, center_y) = key_centers[idx];
+
+        for (i, key) in keys.iter().enumerate() {
+            if i == idx {
+                fill_and_stroke(&mut pixmap, key, transform, &stroke, BLUE, DARK_BLUE);
+            } else {
+                fill_and_stroke(&mut pixmap, key, transform, &stroke, WHITE, BLACK);
+            }
+        }
+
+        const PAW_MIDDLE: (f32, f32) = (6.858, 5.153);
+        let dx = center_x - PAW_MIDDLE.0;
+        let dy = center_y - PAW_MIDDLE.1;
+        let paw_scale = center_y / 5.0 + 0.5;
+
+        let left_hand_down = {
+            let mut pb = PathBuilder::new();
+            pb.move_to(9.988, 0.782);
+            pb.cubic_to(
+                10.523,
+                2.788,
+                8.389 + (dx * paw_scale),
+                5.554 + dy,
+                PAW_MIDDLE.0 + dx,
+                PAW_MIDDLE.1 + dy,
+            );
+            pb.cubic_to(
+                5.969 + (dx * paw_scale),
+                4.923 + dy,
+                6.05,
+                2.833,
+                7.016,
+                1.288,
+            );
+            pb.finish().unwrap()
+        };
+
+        fill_and_stroke(&mut pixmap, &left_hand_down, body_tf, &stroke, WHITE, BLACK);
+    } else {
+        for key in &keys {
+            fill_and_stroke(&mut pixmap, key, transform, &stroke, WHITE, BLACK);
+        }
+        stroke_path(&mut pixmap, &left_hand, body_tf, &stroke, BLACK);
+        fill_and_stroke(&mut pixmap, &paws, body_tf, &stroke, PINK, PINK_STROKE);
+    }
+
+    fill_path(&mut pixmap, &eyes, eye_tf, BLACK);
     fill_path(&mut pixmap, &mouth, mouth_tf, BLACK);
 
     if click_states.left_click {
