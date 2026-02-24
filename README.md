@@ -23,7 +23,7 @@ On Mac, you'll need to give Bongo some permissions to run; there's a quick video
 
 https://github.com/user-attachments/assets/240cc4f3-7cc2-40da-b45b-03d0890c9e25
 
-fun fact the svg was hand traced ;)
+fun fact the svg was hand traced ;) HUGE credit to https://github.com/a1928370421/Bongobs-Cat-Plugin for both the idea and the art!!!
 
 <img width="1520" height="1063" alt="34a37078153a95b5751de37537afda714521ed91c00cfe170aaff1a67cb31c86" src="https://github.com/user-attachments/assets/d1bf593c-adbe-45aa-a177-63e6afbcefad" />
 
