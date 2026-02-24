@@ -14,6 +14,16 @@ https://github.com/user-attachments/assets/aa73625c-f8f6-4a84-92d7-2976cbb492ae
 > Available for Mac and Windows, Linux coming soon :)
 
 
+### MacOS Accessibility/Permissions
+
+On Mac, you'll need to give Bongo some permissions to run; there's a quick video guide below. On first run, it should already take you to this page and ask you for the right permission, but you'll want to give Bongo both the Accessibility permission and the Input Monitoring permission. I PROMISE it doesn't keylog you! Even the keys themselves that Bongo presses are just random; it ONLY checks if you're pressing SOMETHING (you can read the code too)
+
+https://github.com/user-attachments/assets/240cc4f3-7cc2-40da-b45b-03d0890c9e25
+
 fun fact the svg was hand traced ;)
 
 <img width="1520" height="1063" alt="34a37078153a95b5751de37537afda714521ed91c00cfe170aaff1a67cb31c86" src="https://github.com/user-attachments/assets/d1bf593c-adbe-45aa-a177-63e6afbcefad" />
+
+
+
+
