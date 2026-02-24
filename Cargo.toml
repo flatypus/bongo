@@ -10,6 +10,11 @@ softbuffer = "0.4.8"
 tao = "0.34.5"
 tiny-skia = "0.12.0"
 
+[package.metadata.bundle]
+name = "Bongo"
+identifier = "com.flatypus.bongo"
+icon = ["icon.icns"]
+category = "public.app-category.entertainment"
 
 [patch.crates-io]
 softbuffer = { git = "https://github.com/flatypus/softbuffer.git", branch = "hinson/alpha-hack" }
