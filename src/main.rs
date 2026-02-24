@@ -11,8 +11,7 @@ use tao::dpi::PhysicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::ControlFlow;
 use tao::event_loop::EventLoop;
-use tao::window::Window;
-use tao::window::WindowBuilder;
+use tao::window::{ResizeDirection, Window, WindowBuilder};
 use tiny_skia::FillRule;
 use tiny_skia::Transform;
 use tiny_skia::{Paint, Path, PathBuilder, Pixmap, Stroke};
@@ -24,6 +23,14 @@ use tao::platform::macos::WindowBuilderExtMacOS;
 #[cfg(target_os = "windows")]
 use tao::platform::windows::WindowBuilderExtWindows;
 
+const RELAXED_HOVER_THRESH: i32 = 32;
+const BORDER_WIDTH: f64 = 8.0;
+const INIT_WIDTH: f32 = 360.0;
+const INIT_HEIGHT: f32 = 240.0;
+const DEFAULT_START_OFFSET: i32 = 50;
+const MIN_OPACITY: f32 = 0.25;
+const OPACITY_ANIM_SPEED: f32 = 0.08;
+
 mod colors {
     pub const WHITE: [u8; 4] = [255, 255, 255, 255];
     pub const BLACK: [u8; 4] = [0, 0, 0, 255];
@@ -33,6 +40,7 @@ mod colors {
     pub const PINK_STROKE: [u8; 4] = [223, 65, 143, 255];
     pub const MOUSEPAD_FILL: [u8; 4] = [169, 168, 170, 255];
     pub const MOUSEPAD_STROKE: [u8; 4] = [108, 108, 110, 255];
+    pub const BORDER_HINT: [u8; 4] = [255, 255, 255, 180];
 }
 
 struct ClickStates {
@@ -86,6 +94,32 @@ fn fill_and_stroke(
     stroke_path(pixmap, path, transform, stroke, stroke_color);
 }
 
+fn on_border(
+    cursor_x: f64,
+    cursor_y: f64,
+    win_w: f64,
+    win_h: f64,
+    scale_factor: f64,
+) -> Option<ResizeDirection> {
+    let bw = BORDER_WIDTH * scale_factor;
+    let left = cursor_x < bw;
+    let right = cursor_x > win_w - bw;
+    let top = cursor_y < bw;
+    let bottom = cursor_y > win_h - bw;
+
+    match (left, right, top, bottom) {
+        (true, _, true, _) => Some(ResizeDirection::NorthWest),
+        (_, true, true, _) => Some(ResizeDirection::NorthEast),
+        (true, _, _, true) => Some(ResizeDirection::SouthWest),
+        (_, true, _, true) => Some(ResizeDirection::SouthEast),
+        (true, _, _, _) => Some(ResizeDirection::West),
+        (_, true, _, _) => Some(ResizeDirection::East),
+        (_, _, true, _) => Some(ResizeDirection::North),
+        (_, _, _, true) => Some(ResizeDirection::South),
+        _ => None,
+    }
+}
+
 fn lerp(start: f32, end: f32, pos: f32) -> f32 {
     return start * (1.0 - pos) + end * pos;
 }
@@ -117,6 +151,8 @@ fn draw_bongo(
     mouse_y: f32,
     opacity: f32,
     click_states: &ClickStates,
+    hovering: bool,
+    scale_factor: f32,
 ) {
     const START_X: f32 = 0.2;
     const START_Y: f32 = -0.407;
@@ -253,8 +289,9 @@ fn draw_bongo(
 
     let mut pixmap = Pixmap::new(width, height).unwrap();
 
+    let reference_scale = INIT_WIDTH / SVG_WIDTH;
     let stroke = Stroke {
-        width: 0.01 * scale,
+        width: 0.01 * reference_scale,
         ..Stroke::default()
     };
 
@@ -353,6 +390,30 @@ fn draw_bongo(
         fill_path(&mut pixmap, &mouse_button_right, mouse_tf, BLUE);
     }
 
+    // hover border
+    if hovering {
+        let bw = BORDER_WIDTH as f32 * scale_factor;
+        let mut pb = PathBuilder::new();
+        if let Some(rect) =
+            tiny_skia::Rect::from_xywh(bw / 2.0, bw / 2.0, width as f32 - bw, height as f32 - bw)
+        {
+            pb.push_rect(rect);
+            if let Some(border_path) = pb.finish() {
+                let border_stroke = Stroke {
+                    width: bw,
+                    ..Stroke::default()
+                };
+                pixmap.stroke_path(
+                    &border_path,
+                    &paint(BORDER_HINT),
+                    &border_stroke,
+                    Transform::identity(),
+                    None,
+                );
+            }
+        }
+    }
+
     for (index, chunk) in pixmap.data().chunks_exact(4).enumerate() {
         let [r, g, b, a] = [
             ((chunk[0] as f32) * opacity) as u32,
@@ -365,12 +426,6 @@ fn draw_bongo(
 }
 
 fn main() {
-    const OFFSET: i32 = 50;
-    const WIN_HEIGHT: i32 = 240;
-    const WIN_WIDTH: i32 = 360;
-    const MIN_OPACITY: f32 = 0.4;
-    const OPACITY_ANIM_SPEED: f32 = 0.08;
-
     let event_loop = EventLoop::new();
     let monitor = event_loop.primary_monitor().unwrap();
     let scale_factor = monitor.scale_factor();
@@ -378,12 +433,18 @@ fn main() {
         width: mon_width,
         height: mon_height,
     } = monitor.size();
-    let mut pos_x = (mon_width as i32) - (WIN_WIDTH + OFFSET);
-    let mut pos_y = (mon_height as i32) - (WIN_HEIGHT + OFFSET);
+
+    let mut pos_x = (mon_width as i32) - (INIT_WIDTH as i32 + DEFAULT_START_OFFSET);
+    let mut pos_y = (mon_height as i32) - (INIT_HEIGHT as i32 + DEFAULT_START_OFFSET);
+
+    let mut win_width = INIT_WIDTH as i32;
+    let mut win_height = INIT_HEIGHT as i32;
+
     let window = WindowBuilder::new()
         .with_transparent(true)
         .with_position(PhysicalPosition::new(pos_x, pos_y))
-        .with_inner_size(PhysicalSize::new(WIN_WIDTH, WIN_HEIGHT))
+        .with_inner_size(PhysicalSize::new(INIT_WIDTH as i32, INIT_HEIGHT as i32))
+        .with_resizable(true)
         .with_closable(false)
         .with_decorations(false)
         .with_always_on_top(true);
@@ -406,14 +467,16 @@ fn main() {
 
     let context = { softbuffer::Context::new(window) }.unwrap();
     let mut surface = { softbuffer::Surface::new(&context, window) }.unwrap();
-    let mut mouse_x: i32 = 0;
-    let mut mouse_y: i32 = 0;
+    let mut screen_mouse_x: i32 = 0;
+    let mut screen_mouse_y: i32 = 0;
 
     let mut click_states = ClickStates::new();
 
     let mut hovering_over = false;
     let mut hovering_opacity: f32 = 1.0;
     let mut focused = false;
+    let mut cursor_x: f64 = 0.0;
+    let mut cursor_y: f64 = 0.0;
 
     let device_state = match DeviceState::checked_new() {
         Some(ds) => ds,
@@ -456,9 +519,9 @@ fn main() {
                 let mouse = device_state.get_mouse();
                 let new_x = (mouse.coords.0 as f64 * scale_factor) as i32;
                 let new_y = (mouse.coords.1 as f64 * scale_factor) as i32;
-                if new_x != mouse_x || new_y != mouse_y {
-                    mouse_x = new_x;
-                    mouse_y = new_y;
+                if new_x != screen_mouse_x || new_y != screen_mouse_y {
+                    screen_mouse_x = new_x;
+                    screen_mouse_y = new_y;
                     window.request_redraw();
                 }
 
@@ -473,10 +536,10 @@ fn main() {
                     hovering_opacity = new_hovering_opacity;
                 }
 
-                let new_hovering = mouse_x >= pos_x
-                    && mouse_x < pos_x + WIN_WIDTH
-                    && mouse_y >= pos_y
-                    && mouse_y < pos_y + WIN_HEIGHT;
+                let new_hovering = screen_mouse_x >= pos_x - RELAXED_HOVER_THRESH
+                    && screen_mouse_x < pos_x + win_width + RELAXED_HOVER_THRESH
+                    && screen_mouse_y >= pos_y - RELAXED_HOVER_THRESH
+                    && screen_mouse_y < pos_y + win_height + RELAXED_HOVER_THRESH;
 
                 if hovering_over != new_hovering {
                     window.request_redraw();
@@ -525,7 +588,26 @@ fn main() {
                     },
                 ..
             } => {
-                let _ = window.drag_window();
+                if let Some(direction) = on_border(
+                    cursor_x,
+                    cursor_y,
+                    win_width as f64,
+                    win_height as f64,
+                    scale_factor,
+                ) {
+                    let _ = window.drag_resize_window(direction);
+                } else {
+                    window.set_cursor_icon(tao::window::CursorIcon::Grabbing);
+                    let _ = window.drag_window();
+                }
+            }
+
+            Event::WindowEvent {
+                event: WindowEvent::CursorMoved { position, .. },
+                ..
+            } => {
+                cursor_x = position.x;
+                cursor_y = position.y;
             }
 
             Event::WindowEvent {
@@ -536,25 +618,35 @@ fn main() {
                 pos_y = position.y;
             }
 
+            Event::WindowEvent {
+                event: WindowEvent::Resized(size),
+                ..
+            } => {
+                win_width = size.width as i32;
+                win_height = size.height as i32;
+                window.request_redraw();
+            }
+
             Event::RedrawRequested(_) => {
+                let w = win_width.max(1) as u32;
+                let h = win_height.max(1) as u32;
                 surface
-                    .resize(
-                        NonZeroU32::new(WIN_WIDTH as u32).unwrap(),
-                        NonZeroU32::new(WIN_HEIGHT as u32).unwrap(),
-                    )
+                    .resize(NonZeroU32::new(w).unwrap(), NonZeroU32::new(h).unwrap())
                     .unwrap();
                 let mut buffer = surface.buffer_mut().unwrap();
-                let scaled_mouse_x = (mouse_x as f32) / (mon_width as f32);
-                let scaled_mouse_y = (mouse_y as f32) / (mon_height as f32);
+                let norm_mouse_x = (screen_mouse_x as f32) / (mon_width as f32);
+                let norm_mouse_y = (screen_mouse_y as f32) / (mon_height as f32);
 
                 draw_bongo(
                     &mut buffer,
-                    WIN_WIDTH as u32,
-                    WIN_HEIGHT as u32,
-                    scaled_mouse_x,
-                    scaled_mouse_y,
+                    w,
+                    h,
+                    norm_mouse_x,
+                    norm_mouse_y,
                     hovering_opacity,
                     &click_states,
+                    hovering_over,
+                    scale_factor as f32,
                 );
 
                 buffer.present().unwrap();

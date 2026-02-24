@@ -34,10 +34,10 @@ pub fn mouth() -> Path {
 
 pub fn table() -> Path {
     let mut pb = PathBuilder::new();
-    pb.move_to(-9.766, -1.696);
-    pb.line_to(14.889, 2.846);
-    pb.line_to(14.889, 6.821);
-    pb.line_to(-9.766, 6.854);
+    pb.move_to(-50.0, -9.107);
+    pb.line_to(50.0, 9.313);
+    pb.line_to(50.0, 50.0);
+    pb.line_to(-50.0, 50.0);
     pb.close();
     pb.finish().unwrap()
 }

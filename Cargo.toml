@@ -3,6 +3,9 @@ name = "bongo"
 version = "0.1.0"
 edition = "2024"
 
+[build-dependencies]
+embed-resource = "3"
+
 [dependencies]
 device_query = "4.0.1"
 rand = "0.9"
