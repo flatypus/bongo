@@ -13,6 +13,9 @@ https://github.com/user-attachments/assets/aa73625c-f8f6-4a84-92d7-2976cbb492ae
 > And if you don't want to see me 😭 you can click me and hit Q! (but please don't!!!!) <br>
 > Available for Mac and Windows, Linux coming soon :)
 
+### [Install](https://github.com/flatypus/bongo/releases)
+- [Download for MacOS (unzip this)](https://github.com/flatypus/bongo/releases/download/1.0/Bongo.app.zip)
+- [Download for Windows](https://github.com/flatypus/bongo/releases/download/1.0/bongo.exe)
 
 ### MacOS Accessibility/Permissions
 
