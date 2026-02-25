@@ -16,6 +16,7 @@ https://github.com/user-attachments/assets/aa73625c-f8f6-4a84-92d7-2976cbb492ae
 ### [Install](https://github.com/flatypus/bongo/releases)
 - [Download for MacOS (unzip this)](https://github.com/flatypus/bongo/releases/download/1.0/Bongo.app.zip)
 - [Download for Windows](https://github.com/flatypus/bongo/releases/download/1.0/bongo.exe)
+- [Download for Linux (Ubuntu)](https://github.com/flatypus/bongo/releases/download/1.0/bongo-linux)
 
 ### MacOS Accessibility/Permissions
 
